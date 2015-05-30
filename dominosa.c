@@ -64,8 +64,11 @@ enum {
     COL_DOMINOCLASH,
     COL_DOMINOTEXT,
     COL_EDGE,
+    COL_HIGHLIGHT_NUM,
     NCOLOURS
 };
+
+int highlight_num[20]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};  // highlighted numbers. 0 means false
 
 struct game_params {
     int n;
@@ -1019,7 +1022,15 @@ static char *interpret_move(const game_state *state, game_ui *ui,
         int d1, d2;
 
         if (tx < 0 || tx >= w || ty < 0 || ty >= h)
-            return NULL;
+        {
+            if (tx<0 || tx>=w-1 || ty < 0 || ty != h)
+                return NULL;
+            // else it's in the highlight row
+            tx = FROMCOORD(x-TILESIZE/2);
+            highlight_num[tx] = ! highlight_num[tx];
+            return "N";
+            
+        }
 
         /*
          * Now we know which square the click was in, decide which
@@ -1084,6 +1095,9 @@ static game_state *execute_move(const game_state *state, const char *move)
     game_state *ret = dup_game(state);
 
     while (*move) {
+        // Nil move to redraw
+        if (move[0] == 'N')
+            return state;
         if (move[0] == 'S') {
             int i;
 
@@ -1272,6 +1286,13 @@ static float *game_colours(frontend *fe, int *ncolours)
     ret[COL_DOMINOTEXT * 3 + 0] = 1.0F;
     ret[COL_DOMINOTEXT * 3 + 1] = 1.0F;
     ret[COL_DOMINOTEXT * 3 + 2] = 1.0F;
+    
+    //green for highlighted numbers
+    ret[COL_HIGHLIGHT_NUM * 3 + 0] = 0.0F;
+    ret[COL_HIGHLIGHT_NUM * 3 + 1] = 0.7F;
+    ret[COL_HIGHLIGHT_NUM * 3 + 2] = 0.0F;
+    
+    
 
     ret[COL_EDGE * 3 + 0] = ret[COL_BACKGROUND * 3 + 0] * 2 / 3;
     ret[COL_EDGE * 3 + 1] = ret[COL_BACKGROUND * 3 + 1] * 2 / 3;
@@ -1426,8 +1447,14 @@ static void draw_tile(drawing *dr, game_drawstate *ds, const game_state *state,
         if (flags & DF_CURSOR_USEFUL)
 	    draw_rect_corners(dr, ox, oy, CURSOR_RADIUS+1, nc);
     }
+    
+    int num=state->numbers->numbers[y*w+x];
 
-    sprintf(str, "%d", state->numbers->numbers[y*w+x]);
+    sprintf(str, "%d", num);
+    
+    // if the number is supposed to be highlighted, change the color
+    if (highlight_num[num])
+        nc=COL_HIGHLIGHT_NUM;
     draw_text(dr, cx+TILESIZE/2, cy+TILESIZE/2, FONT_VARIABLE, TILESIZE/2,
               ALIGN_HCENTRE | ALIGN_VCENTRE, nc, str);
 
@@ -1448,6 +1475,7 @@ static void game_redraw(drawing *dr, game_drawstate *ds,
         int pw, ph;
         game_compute_size(&state->params, TILESIZE, &pw, &ph);
 	draw_rect(dr, 0, 0, pw, ph, COL_BACKGROUND);
+ // tbd - separating line   draw_rect(dr,0,ph-TILESIZE,2,2, COL_EDGE);
 	draw_update(dr, 0, 0, pw, ph);
 	ds->started = TRUE;
     }
@@ -1514,11 +1542,37 @@ static void game_redraw(drawing *dr, game_drawstate *ds,
                 }
             }
 
-	    if (ds->visible[n] != c) {
+//	    if (ds->visible[n] != c) {
 		draw_tile(dr, ds, state, x, y, c);
                 ds->visible[n] = c;
-	    }
+//	    }
 	}
+    
+    // draw the highlight section
+    for(i=0;i<w-1;i++)
+    {
+        int nc;
+        char str[10];
+        sprintf(str, "%d", i);
+        int cx=COORD(i);
+        int cy=COORD(n+1);
+        
+        clip(dr, cx+TILESIZE/2, cy, TILESIZE, TILESIZE);
+        draw_rect(dr, cx, cy, TILESIZE, TILESIZE, COL_BACKGROUND);
+        
+        // if the number is supposed to be highlighted, change the color
+        if (highlight_num[i])
+            nc=COL_HIGHLIGHT_NUM;
+        else
+            nc=COL_TEXT;
+        
+                
+        draw_text(dr, cx+TILESIZE, cy+TILESIZE/2, FONT_FIXED, TILESIZE/2,
+                  ALIGN_HCENTRE | ALIGN_VCENTRE, nc, str);
+        
+        draw_update(dr, cx, cy, TILESIZE, TILESIZE);
+        unclip(dr);
+    }
 
     sfree(used);
 }
